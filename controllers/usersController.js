@@ -1,90 +1,92 @@
-const UserModel = require("../models/User");
-const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
-const { validationResult } = require('express-validator')
-const jwt = require('jsonwebtoken')
-
+const UserModel = require('../models/User');
+const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
+const { validationResult } = require('express-validator');
+const jwt = require('jsonwebtoken');
 
 // @desc Get all users
 // @route GET /users
 // @access Private
-const getAllUsers = (async (req, res) => {
-  // Get all users from MongoDB
-  const users = await UserModel.find().select("-password").lean();
+const getAllUsers = async (req, res) => {
+ // Get all users from MongoDB
+ const users = await UserModel.find().select('-password').lean();
 
-  // If no users
-  if (!users?.length) {
-    return res.status(400).json({ message: "No users found" });
-  }
+ // If no users
+ if (!users?.length) {
+  return res.status(400).json({ message: 'No users found' });
+ }
 
-  res.json(users);
-});
+ res.json(users);
+};
 
 // @desc Get a user
 // @route GET /users/:username
 // @access Private
-const getUser = (async (req, res) => {
-  const { username } = req.params;
+const getUser = async (req, res) => {
+ const { username } = req.params;
 
-  // Get users from MongoDB
-  const user = await UserModel.find({ username }).select("-password").lean().exec();
+ // Get users from MongoDB
+ const user = await UserModel.find({ username })
+  .select('-password')
+  .lean()
+  .exec();
 
-  // If no users
-  if (!user?.length) {
-    return res
-      .status(400)
-      .json({ message: `No user with the username ${username} found` });
-  }
+ // If no users
+ if (!user?.length) {
+  return res
+   .status(400)
+   .json({ message: `No user with the username ${username} found` });
+ }
 
-  res.json(user);
-});
+ res.json(user);
+};
 
 // @desc Create new user
 // @route POST /users
 // @access public
-const createUser =   async (req, res) => {
-  const errors = validationResult(req)
+const createUser = async (req, res) => {
+ const errors = validationResult(req);
 
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() })
+ if (!errors.isEmpty()) {
+  return res.status(400).json({ errors: errors.array() });
+ }
+
+ const { username, email, password } = req.body;
+ try {
+  let user = await UserModel.findOne({ email });
+  if (user) {
+   return res.status(400).json({ errors: [{ msg: 'User already exists' }] });
   }
 
-  const { username, email, password } = req.body
-  try {
-    let user = await UserModel.findOne({ email })
-    if (user) {
-      return res.status(400).json({ errors: [{ msg: 'User already exists' }] })
-    }
+  user = new UserModel({ username, email, password });
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(password, salt);
 
-    user = new UserModel({ username, email, password })
-    const salt = await bcrypt.genSalt(10)
-    user.password = await bcrypt.hash(password, salt)
+  const payload = {
+   user: {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+   },
+  };
 
-    const payload = {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email
-      }
-    }
-
-    jwt.sign(
-      payload,
-      process.env.jwtSecret,
-      { expiresIn: 3600 },
-      async (err, token) => {
-        if (err) throw err
-        await user.save()
-        res.json({ token })
-      }
-    )
-  } catch (error) {
-    console.error(error.message)
-    res.status(500).send('Server Error')
-  }
-}
+  jwt.sign(
+   payload,
+   process.env.jwtSecret,
+   { expiresIn: 3600 },
+   async (err, token) => {
+    if (err) throw err;
+    await user.save();
+    res.json({ token });
+   }
+  );
+ } catch (error) {
+  console.error(error.message);
+  res.status(500).send('Server Error');
+ }
+};
 module.exports = {
-  getAllUsers,
-  getUser,
-  createUser,
+ getAllUsers,
+ getUser,
+ createUser,
 };
